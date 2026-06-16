@@ -54,6 +54,11 @@ RUN mkdir -p /home/${W_USERNAME}/.vnc && \
 
 RUN systemctl enable vncserver@:1.service
 
+COPY wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
+
+RUN echo -e "[org.gnome.desktop.background]\npicture-uri='file:///usr/share/backgrounds/wallpaper.jpg'\npicture-uri-dark='file:///usr/share/backgrounds/wallpaper.jpg'" > /usr/share/glib-2.0/schemas/10_local-wallpaper.gschema.override && \
+    glib-compile-schemas /usr/share/glib-2.0/schemas/
+
 EXPOSE 5901
 
 CMD ["/sbin/init"]
