@@ -1,0 +1,15 @@
+services:
+  workspace:
+    build:
+      context: ./workspace
+      dockerfile: Dockerfile
+    runtime: sysbox-runc
+    security_opt:
+      - seccomp=unconfined
+    shm_size: "2gb"
+    ports:
+      - "5901:5901"
+    environment:
+      - TZ=Europe/Prague
+    hostname: workspace.lemongrass.local
+    restart: unless-stopped
