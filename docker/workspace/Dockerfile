@@ -54,6 +54,13 @@ RUN mkdir -p /home/${W_USERNAME}/.vnc && \
 
 RUN systemctl enable vncserver@:1.service
 
+RUN --mount=type=cache,target=/var/cache/libdnf5 \
+    dnf -y --setopt=keepcache=True update && \ 
+    dnf -y --setopt=keepcache=True install \
+      nautilus \
+      kitty \
+      firefox
+
 COPY wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
 
 RUN echo -e "[org.gnome.desktop.background]\npicture-uri='file:///usr/share/backgrounds/wallpaper.jpg'\npicture-uri-dark='file:///usr/share/backgrounds/wallpaper.jpg'" > /usr/share/glib-2.0/schemas/10_local-wallpaper.gschema.override && \
