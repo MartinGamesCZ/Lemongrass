@@ -1,4 +1,28 @@
 # syntax=docker/dockerfile:1
+
+# --- API Builder image ---
+FROM node:22-alpine AS builder
+
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+WORKDIR /app
+
+# Copy package files
+COPY packages/win-api/package.json packages/win-api/pnpm-lock.yaml packages/win-api/pnpm-workspace.yaml ./
+
+# Install pnpm latest-11, install packages
+RUN npm install -g pnpm@latest-11
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# Copy tsconfig, nest-cli, src
+COPY packages/win-api/tsconfig.json packages/win-api/tsconfig.build.json packages/win-api/nest-cli.json ./
+COPY packages/win-api/src ./src
+
+# Build
+RUN pnpm build
+
+# --- Workspace image ---
 FROM fedora:42
 
 ARG W_USERNAME=lemongrass
@@ -12,17 +36,17 @@ ENV APPIMAGE_EXTRACT_AND_RUN=1
 
 WORKDIR /home/${W_USERNAME}
 
+# Install system dependencies
 RUN --mount=type=cache,target=/var/cache/libdnf5 \
     dnf -y --setopt=keepcache=True update && \
     dnf -y --setopt=keepcache=True install \
         gnome-shell \
         gnome-session \
         #mutter \
-        #nautilus \
         gnome-session-xsession \
         gsettings-desktop-schemas \
         dbus-x11 \
-        #at-spi2-core \
+        at-spi2-core \
         mesa-dri-drivers \
         #xdotool \
         #wget \
@@ -33,29 +57,65 @@ RUN --mount=type=cache,target=/var/cache/libdnf5 \
         procps-ng \
         fuse-libs \
         systemd \
-        sudo
+        sudo \
+        unzip \
+        gcc \
+        gcc-c++ \
+        make \
+        gobject-introspection-devel \
+        glib2-devel
 
-RUN mkdir -p /etc/systemd && \
-    echo -e "[Journal]\nStorage=volatile\nReadKMsg=no" > /etc/systemd/journald.conf
+# Copy journal config
+COPY docker/workspace/assets/systemd/journald.conf /etc/systemd/journald.conf
 
+# Create user
 RUN useradd -u 1000 -g 0 -m -d /home/${W_USERNAME} ${W_USERNAME} && \
     usermod -aG wheel ${W_USERNAME} && \
     echo "${W_PASSWORD}" | passwd --stdin ${W_USERNAME}
 
-RUN mkdir -p /etc/systemd/system/dbus-broker.service.d && \
-    echo -e "[Service]\nExecStart=\nExecStart=/usr/bin/dbus-broker-launch --scope system" > /etc/systemd/system/dbus-broker.service.d/override.conf
+# Copy dbus broker config
+COPY docker/workspace/assets/systemd/dbus-broker-override.conf /etc/systemd/system/dbus-broker.service.d/override.conf
 
+# Setup tigervnc
 RUN echo ":1=${W_USERNAME}" > /etc/tigervnc/vncserver.users && \
     echo -e "session=gnome\ngeometry=${VNC_RESOLUTION}\nlocalhost=no" > /etc/tigervnc/vncserver-config-defaults
 
+# Setup vnc password and file permissions
 RUN mkdir -p /home/${W_USERNAME}/.vnc && \
     echo "${W_PASSWORD}" | vncpasswd -f > /home/${W_USERNAME}/.vnc/passwd && \
     chmod 700 /home/${W_USERNAME}/.vnc && \
     chmod 600 /home/${W_USERNAME}/.vnc/passwd && \
     chown -R 1000:0 /home/${W_USERNAME}
 
+# Enable vnc service
 RUN systemctl enable vncserver@:1.service
 
+# Install fvm
+RUN su - lemongrass -c 'curl -fsSL https://fnm.vercel.app/install | bash'
+
+# Install node
+RUN su - lemongrass -c 'export PATH="/home/lemongrass/.local/share/fnm:$PATH" && \
+    eval "$(fnm env --shell bash)" && \
+    fnm install 22 && \
+    fnm default 22 && \
+    npm install -g pnpm@latest-11'
+
+# Copy api from builder
+COPY --from=builder --chown=lemongrass:root /app/dist /home/${W_USERNAME}/app/dist
+COPY --from=builder --chown=lemongrass:root /app/package.json /home/${W_USERNAME}/app/package.json
+COPY --from=builder --chown=lemongrass:root /app/pnpm-lock.yaml /home/${W_USERNAME}/app/pnpm-lock.yaml
+COPY --from=builder --chown=lemongrass:root /app/pnpm-workspace.yaml /home/${W_USERNAME}/app/pnpm-workspace.yaml
+
+# Install node dependencies
+RUN su - lemongrass -c 'cd /home/lemongrass/app && \
+    export PATH="/home/lemongrass/.local/share/fnm/aliases/default/bin:$PATH" && \
+    pnpm install --prod --frozen-lockfile'
+
+# Copy and enable api service
+COPY docker/workspace/assets/systemd/lemongrass-api.service /etc/systemd/system/lemongrass-api.service
+RUN systemctl enable lemongrass-api.service
+
+# Install programs
 RUN --mount=type=cache,target=/var/cache/libdnf5 \
     dnf -y --setopt=keepcache=True update && \ 
     dnf -y --setopt=keepcache=True install \
@@ -63,15 +123,19 @@ RUN --mount=type=cache,target=/var/cache/libdnf5 \
       kitty \
       firefox
 
-COPY wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
+# Configure gnome
+COPY docker/workspace/assets/glib-schemas/wallpaper.override /usr/share/glib-2.0/schemas/10_local-wallpaper.gschema.override
+COPY docker/workspace/assets/glib-schemas/accessibility.override /usr/share/glib-2.0/schemas/10_local-accessibility.gschema.override
+COPY docker/workspace/wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
 
-RUN echo -e "[org.gnome.desktop.background]\npicture-uri='file:///usr/share/backgrounds/wallpaper.jpg'\npicture-uri-dark='file:///usr/share/backgrounds/wallpaper.jpg'" > /usr/share/glib-2.0/schemas/10_local-wallpaper.gschema.override && \
-    glib-compile-schemas /usr/share/glib-2.0/schemas/
+RUN glib-compile-schemas /usr/share/glib-2.0/schemas/
 
-# Enable novnc proxy
-RUN echo -e "[Unit]\nDescription=NoVNC proxy\nAfter=network.target\n\n[Service]\nExecStart=/usr/sbin/novnc_proxy --listen 6901 --vnc localhost:5901\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target" > /etc/systemd/system/novnc.service && \
-    systemctl enable novnc.service
+# Copy and enable novnc service
+COPY docker/workspace/assets/systemd/novnc.service /etc/systemd/system/novnc.service
+RUN systemctl enable novnc.service
 
-EXPOSE 5901
+# Expose ports
+EXPOSE 5901 6901 3000
 
+# Use systemd to start the session
 CMD ["/sbin/init"]

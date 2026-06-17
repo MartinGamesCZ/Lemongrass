@@ -1,8 +1,8 @@
 services:
   workspace:
     build:
-      context: ./workspace
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/workspace/Dockerfile
     runtime: sysbox-runc
     security_opt:
       - seccomp=unconfined
@@ -10,6 +10,7 @@ services:
     ports:
       - "5901:5901"
       - "6901:6901"
+      - "8000:3000"
     environment:
       - TZ=Europe/Prague
     hostname: workspace.lemongrass.local

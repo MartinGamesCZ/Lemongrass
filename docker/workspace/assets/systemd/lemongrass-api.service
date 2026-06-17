@@ -1,0 +1,16 @@
+[Unit]
+Description=Lemongrass NestJS API Service
+After=network.target
+
+[Service]
+Type=simple
+User=lemongrass
+WorkingDirectory=/home/lemongrass/app
+Environment="PATH=/home/lemongrass/.local/share/fnm/aliases/default/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="DISPLAY=:1"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
+ExecStart=/home/lemongrass/.local/share/fnm/aliases/default/bin/pnpm start:prod
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
