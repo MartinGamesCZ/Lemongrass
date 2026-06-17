@@ -29,6 +29,8 @@ RUN --mount=type=cache,target=/var/cache/libdnf5 \
         #which \
         #python3-gobject \
         tigervnc-server \
+        novnc \
+        procps-ng \
         fuse-libs \
         systemd \
         sudo
@@ -65,6 +67,10 @@ COPY wallpaper.jpg /usr/share/backgrounds/wallpaper.jpg
 
 RUN echo -e "[org.gnome.desktop.background]\npicture-uri='file:///usr/share/backgrounds/wallpaper.jpg'\npicture-uri-dark='file:///usr/share/backgrounds/wallpaper.jpg'" > /usr/share/glib-2.0/schemas/10_local-wallpaper.gschema.override && \
     glib-compile-schemas /usr/share/glib-2.0/schemas/
+
+# Enable novnc proxy
+RUN echo -e "[Unit]\nDescription=NoVNC proxy\nAfter=network.target\n\n[Service]\nExecStart=/usr/sbin/novnc_proxy --listen 6901 --vnc localhost:5901\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target" > /etc/systemd/system/novnc.service && \
+    systemctl enable novnc.service
 
 EXPOSE 5901
 

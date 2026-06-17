@@ -9,6 +9,7 @@ services:
     shm_size: "2gb"
     ports:
       - "5901:5901"
+      - "6901:6901"
     environment:
       - TZ=Europe/Prague
     hostname: workspace.lemongrass.local
