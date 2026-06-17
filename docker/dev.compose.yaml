@@ -1,0 +1,26 @@
+services:
+  frontend:
+    tty: true
+    build:
+      context: ../packages/frontend
+      dockerfile: dev.Dockerfile
+    working_dir: /app
+    volumes:
+      - "../packages/frontend:/app"
+      - "/app/node_modules"
+      - "/app/.next"
+    ports:
+      - "3000:3000"
+
+  orchestrator-api:
+    tty: true
+    build:
+      context: ../packages/orchestrator-api
+      dockerfile: dev.Dockerfile
+    working_dir: /app
+    volumes:
+      - "../packages/orchestrator-api:/app"
+      - "/app/node_modules"
+      - "/app/dist"
+    ports:
+      - "3001:3000"
